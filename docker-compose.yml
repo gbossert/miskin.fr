@@ -1,0 +1,81 @@
+version: "2.1"
+
+services:
+
+  traefik:
+    image: traefik:1.5-alpine
+    hostname: traefik
+    restart: always
+    networks:
+      web.miskin.fr:
+        aliases:
+          - traefik.web.miskin.fr
+    ports:
+      - "9080:80"
+      - "9081:8080"      
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.port=8080'
+      - 'traefik.frontend.rule=Host:miskin.dev'
+    command: --api --docker
+  
+  consul:
+    image: consul:1.0.7
+    hostname: consul
+    restart: always
+    networks:
+      consul.miskin.fr:
+        aliases:
+          - consul.consul.miskin.fr        
+    ports:
+      - 8500:8500
+    command: "agent -server -ui -client=0.0.0.0 -bootstrap"
+
+  vault:
+    image: vault:0.10.0
+    hostname: vault
+    restart: always
+    networks:
+      consul.miskin.fr:
+        aliases:
+          - vault.consul.miskin.fr
+      secrets.miskin.fr:
+        aliases:
+          - vault.secrets.miskin.fr
+    volumes:
+      - '$PWD/services/vault/vault.config:/vault/config/vault.hcl'
+    environment:
+      VAULT_ADDR: 'http://0.0.0.0:9000'
+    cap_add:
+      - IPC_LOCK
+    depends_on:
+      - consul
+    command: "server"  
+
+  vault-ui:
+    image: djenriquez/vault-ui:2.4.0-rc3
+    hostname: vault-ui
+    restart: always
+    networks:
+      secrets.miskin.fr:
+        aliases:
+          - vault-ui.secrets.miskin.fr        
+      web.miskin.fr:
+        aliases:
+          - vault-ui.web.miskin.fr
+    ports:
+      - 8000:8000
+    depends_on:
+      - vault
+    environment:
+      - VAULT_URL_DEFAULT=http://vault:9000
+      - VAULT_AUTH_DEFAULT=TOKEN
+    labels:
+      - "traefik.frontend.rule=Host:secrets.admin.miskin.fr"      
+
+networks:
+  consul.miskin.fr:
+  secrets.miskin.fr:
+  web.miskin.fr:
